@@ -166,7 +166,7 @@ def train_and_test():
         '''
 
     result = test(entity_tokenizer, tokenizer, model, test_loader, device)
-    with open(f'ner_res-{time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime())}.json', 'w') as f:
+    with open(f'./results/ner_res-{time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime())}.json', 'w') as f:
         json.dump(result, f)
 
 

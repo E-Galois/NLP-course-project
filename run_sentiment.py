@@ -127,7 +127,7 @@ def train_and_test():
         '''
 
     result = test(tokenizer, model, test_loader, device)
-    with open(f'senti_res-{time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime())}.json', 'w') as f:
+    with open(f'./results/senti_res-{time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime())}.json', 'w') as f:
         json.dump(result, f)
 
 
