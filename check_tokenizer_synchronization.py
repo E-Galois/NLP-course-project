@@ -3,7 +3,7 @@ from settings.settings_named_entity import *
 from data_process import get_dataloaders, NamedEntityDataset, clean_split
 from model_process import load_model
 from transformers import BertForTokenClassification
-from named_entity import get_entity_tokenizer
+from run_named_entity import get_entity_tokenizer
 import pandas as pd
 
 

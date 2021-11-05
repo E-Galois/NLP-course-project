@@ -11,5 +11,5 @@ NER train & test:
 - python named_entity.py
 
 combine results and generate submit file:
-- please manually modify path in combine_results.py
-- python combine_results.py
+1. please manually modify path in combine_results.py
+2. run python combine_results.py
