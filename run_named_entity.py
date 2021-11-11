@@ -1,19 +1,23 @@
+import os
 from tqdm import tqdm
 import json
 import time
-from settings.settings_named_entity import *
+import torch
+from settings.settings_named_entity import NERSettings
 from data_process import get_dataloaders, NamedEntityDataset, clean_split
 from model_process import load_model
-from transformers import BertTokenizer, BertForTokenClassification
+# from transformers import BertTokenizer, BertForTokenClassification
+from transformers import BertForTokenClassification, BertConfig, BertTokenizer
+from transformers import get_linear_schedule_with_warmup
 
 
 def get_entity_tokenizer():
-    entity_tokenizer = BertTokenizer.from_pretrained(entity_vocab_file)
+    entity_tokenizer = BertTokenizer.from_pretrained(NERSettings.entity_vocab_file)
     return entity_tokenizer
 
 
 # 定义训练的函数
-def train(entity_tokenizer, tokenizer, model, dataloader, optimizer, criterion, device):
+def train(entity_tokenizer, tokenizer, model, dataloader, optimizer, criterion=None, device='cuda', scheduler=None):
     model.train()
     epoch_loss = 0
     epoch_acc = 0
@@ -43,7 +47,6 @@ def train(entity_tokenizer, tokenizer, model, dataloader, optimizer, criterion, 
         y_pred_label = y_pred_prob.argmax(dim=2)
 
         # 计算loss
-        # 这个 loss 和 output[0] 是一样的
         # loss = criterion(y_pred_prob.view(-1, 3), tokenized_label.view(-1))
         loss = output['loss']
 
@@ -141,34 +144,61 @@ def test(entity_tokenizer, tokenizer, model, iterator, device):
     return dict(zip(ids, classes))
 
 
-def train_and_test():
+def train_and_test(CFG, global_timestamp, search_node_name):
     entity_tokenizer = get_entity_tokenizer()
-    entity_train_loader, test_loader = get_dataloaders(NamedEntityDataset, train_data, None, test_data, batch_size)
+    entity_train_loader, test_loader, valid_loader = get_dataloaders(
+        NamedEntityDataset,
+        CFG.train_data,
+        CFG.valid_data,
+        CFG.test_data,
+        batch_size=CFG.batch_size,
+        valid_sel_frac=0.1
+    )
     tokenizer, model, optimizer, criterion = load_model(
         BertForTokenClassification,
-        vocab_file,
-        config_file,
-        num_labels,
-        hidden_dropout_prob,
-        model_file,
-        device,
-        weight_decay,
-        learning_rate
+        BertConfig,
+        BertTokenizer,
+        CFG.vocab_file,
+        CFG.config_file,
+        CFG.num_labels,
+        CFG.hidden_dropout_prob,
+        CFG.model_file,
+        CFG.device,
+        CFG.weight_decay,
+        CFG.learning_rate,
+        # load_from_dir=True,
+        # load_dir=CFG.model_path
     )
+    warm_up_ratio = 0.1  # 定义要预热的step
+    total_steps = len(entity_train_loader) * CFG.epochs
+    scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=warm_up_ratio * total_steps,
+                                                num_training_steps=total_steps)
     # 开始训练和验证
-    for i in range(epochs):
+    for i in range(CFG.epochs):
         train_loss, train_acc = train(entity_tokenizer, tokenizer, model, entity_train_loader, optimizer, criterion,
-                                      device)
+                                      device=CFG.device, scheduler=scheduler)
         print("train loss: ", train_loss, "\t", "train acc:", train_acc)
-        '''
-        valid_loss, valid_acc = evaluate(entity_tokenizer, tokenizer, model_chinese_bert_wwm_ext, sentiment_valid_loader, device)
-        print("valid loss: ", valid_loss, "\t", "valid acc:", valid_acc)
-        '''
 
-    result = test(entity_tokenizer, tokenizer, model, test_loader, device)
-    with open(f'./results/ner_res-{time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime())}.json', 'w') as f:
-        json.dump(result, f)
+        valid_loss, valid_acc = evaluate(entity_tokenizer, tokenizer, model, valid_loader, CFG.device)
+        print("valid loss: ", valid_loss, "\t", "valid acc:", valid_acc)
+
+        result = test(entity_tokenizer, tokenizer, model, test_loader, CFG.device)
+
+        epoch_node_name = f'epoch-{i}_vacc-{valid_acc}'
+        result_dir = f'./results/NER/{global_timestamp}/{search_node_name}/{epoch_node_name}'
+        os.mkdir(result_dir)
+        with open(os.path.join(result_dir, f'/ner_res.json'), 'w') as f:
+            json.dump(result, f)
 
 
 if __name__ == '__main__':
-    train_and_test()
+    global_timestamp = f'{time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime())}'
+    os.mkdir(f'./results/sentiment/{global_timestamp}')
+    CFG = NERSettings()
+    for batch_size in [1, 2, 3, 4, 6, 8]:
+        for lr in [1e-6, 2e-6, 5e-6, 1e-5, 2e-5, 5e-5, 1e-4]:
+            CFG.batch_size = batch_size
+            CFG.learning_rate = lr
+            search_node_name = f'bs-{CFG.batch_size}_lr-{CFG.learning_rate}'
+            os.mkdir(f'./results/sentiment/{global_timestamp}/{search_node_name}')
+            train_and_test(CFG, global_timestamp, search_node_name)

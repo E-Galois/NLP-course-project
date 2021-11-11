@@ -1,25 +1,34 @@
-from transformers import BertConfig, BertTokenizer, AdamW
+from transformers import AdamW
 import torch.nn as nn
 # from settings.settings_sentiment import *
 
 
 def load_model(
-    bert_cls,
-    vocab_file,
-    config_file,
-    num_labels,
-    hidden_dropout_prob,
-    model_file,
-    device,
-    weight_decay,
-    learning_rate,
+    model_cls,
+    cfg_cls,
+    tokenizer_cls,
+    vocab_file=None,
+    config_file=None,
+    num_labels=None,
+    hidden_dropout_prob=None,
+    model_file=None,
+    device=None,
+    weight_decay=None,
+    learning_rate=None,
+    load_from_dir=False,
+    load_dir=None
 ):
     # 加载模型
-    #
-    tokenizer = BertTokenizer.from_pretrained(vocab_file, strip_accents=False)
-    config = BertConfig.from_pretrained(config_file, num_labels=num_labels, hidden_dropout_prob=hidden_dropout_prob)
-    model = bert_cls.from_pretrained(model_file, config=config)
-    model.to(device)
+    if load_from_dir:
+        tokenizer = tokenizer_cls.from_pretrained(load_dir, strip_accents=False)
+        config = cfg_cls.from_pretrained(load_dir, num_labels=num_labels, hidden_dropout_prob=hidden_dropout_prob)
+        model = model_cls.from_pretrained(load_dir, config=config)
+        model.to(device)
+    else:
+        tokenizer = tokenizer_cls.from_pretrained(vocab_file, strip_accents=False)
+        config = cfg_cls.from_pretrained(config_file, num_labels=num_labels, hidden_dropout_prob=hidden_dropout_prob)
+        model = model_cls.from_pretrained(model_file, config=config)
+        model.to(device)
 
     # 定义优化器和损失函数
     # Prepare optimizer and schedule (linear warmup and decay)

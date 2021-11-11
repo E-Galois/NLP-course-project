@@ -1,12 +1,13 @@
 from torch.utils.data import Dataset, DataLoader
 import pandas as pd
 import unicodedata
+import numpy as np
 
 
 class SentimentDataset(Dataset):
-    def __init__(self, path_to_file, nrows=None):
-        if nrows is not None:
-            self.dataset = pd.read_csv(path_to_file, nrows=nrows)
+    def __init__(self, path_to_file, idx=None):
+        if idx is not None:
+            self.dataset = pd.read_csv(path_to_file).iloc[idx]
         else:
             self.dataset = pd.read_csv(path_to_file)
 
@@ -16,16 +17,16 @@ class SentimentDataset(Dataset):
     def __getitem__(self, idx):
         # 根据 idx 分别找到 text 和 label
         text = self.dataset.iloc[idx]["text"]
-        label = self.dataset.loc[idx]["class"]
+        label = self.dataset.iloc[idx]["class"]
         sample = {"text": text, "label": label}
         # 返回一个 dict
         return sample
 
 
 class NamedEntityDataset(Dataset):
-    def __init__(self, path_to_file, nrows=None):
-        if nrows is not None:
-            self.dataset = pd.read_csv(path_to_file, nrows=nrows)
+    def __init__(self, path_to_file, idx=None):
+        if idx is not None:
+            self.dataset = pd.read_csv(path_to_file).iloc[idx]
         else:
             self.dataset = pd.read_csv(path_to_file)
         # self.dataset['BIO_anno'] = self.dataset['BIO_anno'].apply(lambda x: x.split(' '))
@@ -36,7 +37,7 @@ class NamedEntityDataset(Dataset):
     def __getitem__(self, idx):
         # 根据 idx 分别找到 text 和 label
         text = self.dataset.iloc[idx]["text"]
-        label = self.dataset.loc[idx]["BIO_anno"]
+        label = self.dataset.iloc[idx]["BIO_anno"]
         sample = {"text": text, "label": label}
         # 返回一个 dict
         return sample
@@ -101,16 +102,23 @@ def clean_split(sentence):
     return ret
 
 
-def get_dataloaders(train_cls, train_path, valid_path, test_path, batch_size, train_shuffle=True):
-    # 加载训练集
+def get_dataloaders(train_cls, train_path, valid_path, test_path, valid_sel_frac=0.1, batch_size=1, train_shuffle=True):
     train_set = train_cls(train_path)
-    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=0)
-    '''
+    num_data = len(train_set)
+    del train_set
+    num_valid = int(valid_sel_frac * num_data)
+    idx_valid = np.random.permutation(num_data)[:num_valid]
+    idx_train = np.setdiff1d(np.arange(num_data), idx_valid)
+
+    # 加载训练集
+    train_set = train_cls(train_path, idx=idx_train)
+    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=train_shuffle, num_workers=0)
+
     # 加载验证集
-    sentiment_valid_set = SentimentDataset(valid_path)
-    sentiment_valid_loader = DataLoader(sentiment_valid_set, batch_size=batch_size, shuffle=False, num_workers=0)
-    '''
+    valid_set = train_cls(valid_path, idx=idx_valid)
+    valid_loader = DataLoader(valid_set, batch_size=batch_size, shuffle=False, num_workers=0)
+
     # 加载测试集
     test_set = IndexedTestDataset(test_path)
     test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False, num_workers=0)
-    return train_loader, test_loader
+    return train_loader, test_loader, valid_loader
